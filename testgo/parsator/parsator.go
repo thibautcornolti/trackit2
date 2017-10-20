@@ -20,6 +20,20 @@ func transformArrayToMap(in *interface{}) {
 	*in = newMap
 }
 
+func cleanField(name string, sectMapField interface{}, in map[string]interface{}) {
+	if _, ok := in["key"]; ok {
+		if typpedSectMapField, ok := sectMapField.(map[string]interface{}); ok && name[0] == '*' {
+			sectMapField := typpedSectMapField["buckets"]
+			transformArrayToMap(&sectMapField)
+			in[in["key"].(string)] = sectMapField
+		} else {
+			in[in["key"].(string)] = sectMapField
+		}
+		delete(in, "key")
+	}
+	delete(in, name)
+}
+
 func recurMap(in map[string]interface{}) {
 	for name, mapField := range in {
 		if name[0] != '&' && name[0] != '*' {
@@ -27,37 +41,32 @@ func recurMap(in map[string]interface{}) {
 		}
 		typpedMapField := mapField.(map[string]interface{})
 		splittedName := strings.Split(name[1:], ".")
-		aggSect := splittedName[0]
+		aggSect := strings.Replace(splittedName[0], ",", ".", -1)
 		typpedSectMapField := typpedMapField[aggSect]
 		if name[0] == '&' {
 			recurTab(&typpedSectMapField)
+		} else if name[0] == '*' {
+			recurMap(typpedMapField)
 		}
-		in[in["key"].(string)] = typpedSectMapField
-		delete(in, "key")
-		delete(in, name)
+		cleanField(name, typpedSectMapField, in)
 	}
 }
 
 func recurTab(in *interface{}) {
 	typpedIn := (*in).([]interface{})
-	transformable := true
 	for _, field := range typpedIn {
 		typpedField := field.(map[string]interface{})
 		delete(typpedField, "doc_count")
 		recurMap(typpedField)
-		if len(typpedField) > 1 {
-			transformable = false
-		}
 	}
-	if transformable {
-		transformArrayToMap(in)
-	}
+	transformArrayToMap(in)
 }
 
-func Test(esResult *elastic.SearchResult) map[string]interface{} {
+// GetParsedElasticSearchResult ...
+func GetParsedElasticSearchResult(esResult *elastic.SearchResult) map[string]interface{} {
 	res := make(map[string]interface{})
-	resJson, _ := json.MarshalIndent(*esResult, "", "  ")
-	fmt.Printf("%v\n", string(resJson))
+	resJSON, _ := json.MarshalIndent(*esResult, "", "  ")
+	fmt.Printf("%v\n", string(resJSON))
 	for name, agg := range esResult.Aggregations {
 		var t map[string]interface{}
 		err := json.Unmarshal(*agg, &t)

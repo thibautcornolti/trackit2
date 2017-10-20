@@ -16,9 +16,11 @@ package costs
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/trackit/jsonlog"
 	"gopkg.in/olivere/elastic.v5"
 )
 
@@ -72,10 +74,10 @@ func createAggregationPerAccount(paramSplit []string) []paramAggrAndName {
 func createAggregationPerTag(paramSplit []string) []paramAggrAndName {
 	res := make([]paramAggrAndName, 2)
 	res[0] = paramAggrAndName{
-		paramName: "tag_key",
+		paramName: "*&buckets,tag_value.tag_key",
 		paramAggr: elastic.NewFilterAggregation().Filter(elastic.NewTermQuery("tag.key", fmt.Sprintf("user:%v", paramSplit[1])))}
 	res[1] = paramAggrAndName{
-		paramName: "tag_value",
+		paramName: "&buckets.tag_value",
 		paramAggr: elastic.NewTermsAggregation().Field("tag.value").Size(aggregationMaxSize)}
 	return res
 }
@@ -100,7 +102,7 @@ func nestAggregation(allAggrSlice []paramAggrAndName) elastic.Aggregation {
 	allAggrSlice = reverseAggregationArray(allAggrSlice)
 	aggrToNest := allAggrSlice[0]
 	for _, baseAggr := range allAggrSlice[1:] {
-		fmt.Printf("aggrToNest.paramName = %v; baseAggr.paramName = %v\n", aggrToNest.paramName, baseAggr.paramName)
+		// fmt.Printf("aggrToNest.paramName = %v; baseAggr.paramName = %v\n", aggrToNest.paramName, baseAggr.paramName)
 		switch assertedBaseAggr := baseAggr.paramAggr.(type) {
 		case *elastic.TermsAggregation:
 			aggrBuff := assertedBaseAggr.SubAggregation(aggrToNest.paramName, aggrToNest.paramAggr)
@@ -144,7 +146,16 @@ func GetElasticSearchParams(accountList []string, durationBegin time.Time, durat
 		paramAggr := detailedLineItemFieldsName[paramNameSplit[0]](paramNameSplit)
 		allAggregationSlice = append(allAggregationSlice, paramAggr...)
 	}
+	aggregationParamName := allAggregationSlice[0].paramName
 	nestedAggregation := nestAggregation(allAggregationSlice)
-	search.Aggregation(allAggregationSlice[0].paramName, nestedAggregation)
+	search.Aggregation(aggregationParamName, nestedAggregation)
 	return search
+}
+
+// HandleRequest is a dummy request handler function. It does nothing except
+// some logging and returns static data.
+func HandleRequest(response http.ResponseWriter, request *http.Request, logger jsonlog.Logger) {
+	logger.Debug("Request headers.", request.Header)
+	response.WriteHeader(200)
+	response.Write([]byte("Costs."))
 }
