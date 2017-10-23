@@ -8,58 +8,84 @@ import (
 	"gopkg.in/olivere/elastic.v5"
 )
 
-func transformArrayToMap(in *interface{}) {
-	typpedIn := (*in).([]interface{})
+func flatSubAggregation(in *interface{}) {
+	oldTab := (*in).([]interface{})
 	newMap := make(map[string]interface{})
-	for _, field := range typpedIn {
-		typpedMap := field.(map[string]interface{})
-		for name, fieldMap := range typpedMap {
-			newMap[name] = fieldMap
+	for _, field := range oldTab {
+		for name, subField := range field.(map[string]interface{}) {
+			newMap[name] = subField
 		}
 	}
 	*in = newMap
 }
 
-func cleanField(name string, sectMapField interface{}, in map[string]interface{}) {
-	if _, ok := in["key"]; ok {
-		if typpedSectMapField, ok := sectMapField.(map[string]interface{}); ok && name[0] == '*' {
-			sectMapField := typpedSectMapField["buckets"]
-			transformArrayToMap(&sectMapField)
-			in[in["key"].(string)] = sectMapField
-		} else {
-			in[in["key"].(string)] = sectMapField
-		}
-		delete(in, "key")
+func cleanSubAggregation(aggregationName string, aggregationType interface{}, in map[string]interface{}) {
+	key, ok := in["key_as_string"]
+	if !ok {
+		key, ok = in["key"]
 	}
-	delete(in, name)
+	skey := fmt.Sprintf("%v", key)
+	if ok {
+		if aggregationMapType, ok := aggregationType.(map[string]interface{}); ok && aggregationName[0] == '*' {
+			aggregationType := aggregationMapType["buckets"]
+			flatSubAggregation(&aggregationType)
+		}
+		in[skey] = aggregationType
+		delete(in, "key")
+		delete(in, "key_as_string")
+	}
+	delete(in, aggregationName)
 }
 
 func recurMap(in map[string]interface{}) {
-	for name, mapField := range in {
-		if name[0] != '&' && name[0] != '*' {
+	for aggregationName, field := range in {
+		if aggregationName[0] != '&' && aggregationName[0] != '*' {
 			continue
 		}
-		typpedMapField := mapField.(map[string]interface{})
-		splittedName := strings.Split(name[1:], ".")
-		aggSect := strings.Replace(splittedName[0], ",", ".", -1)
-		typpedSectMapField := typpedMapField[aggSect]
-		if name[0] == '&' {
-			recurTab(&typpedSectMapField)
-		} else if name[0] == '*' {
-			recurMap(typpedMapField)
+		field := field.(map[string]interface{})
+		metadata := strings.Split(aggregationName[1:], ".")
+		aggregationTypeName := strings.Replace(metadata[0], ",", ".", -1)
+		aggregationType := field[aggregationTypeName]
+		if aggregationName[0] == '&' {
+			recurTab(&aggregationType)
+		} else if aggregationName[0] == '*' {
+			recurMap(field)
 		}
-		cleanField(name, typpedSectMapField, in)
+		cleanSubAggregation(aggregationName, aggregationType, in)
 	}
 }
 
 func recurTab(in *interface{}) {
-	typpedIn := (*in).([]interface{})
-	for _, field := range typpedIn {
-		typpedField := field.(map[string]interface{})
-		delete(typpedField, "doc_count")
-		recurMap(typpedField)
+	tab := (*in).([]interface{})
+	for _, field := range tab {
+		field := field.(map[string]interface{})
+		delete(field, "doc_count")
+		recurMap(field)
 	}
-	transformArrayToMap(in)
+	flatSubAggregation(in)
+}
+
+func prepareRecursiveParsing(result map[string]interface{}, aggregationName string, aggregation *json.RawMessage) {
+	var root map[string]interface{}
+	err := json.Unmarshal(*aggregation, &root)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+	}
+	metadata := strings.Split(aggregationName[1:], ".")
+	name := metadata[len(metadata)-1]
+	aggregationTypeName := strings.Replace(metadata[0], ",", ".", -1)
+	aggregationType := root[aggregationTypeName]
+	if aggregationName[0] == '&' {
+		recurTab(&aggregationType)
+		result[name] = aggregationType
+	} else if aggregationName[0] == '*' {
+		recurMap(root)
+		bucketAggregation := aggregationType.(map[string]interface{})["buckets"]
+		flatSubAggregation(&bucketAggregation)
+		result[name] = bucketAggregation
+	} else {
+		result[aggregationName] = root
+	}
 }
 
 // GetParsedElasticSearchResult ...
@@ -67,22 +93,8 @@ func GetParsedElasticSearchResult(esResult *elastic.SearchResult) map[string]int
 	res := make(map[string]interface{})
 	resJSON, _ := json.MarshalIndent(*esResult, "", "  ")
 	fmt.Printf("%v\n", string(resJSON))
-	for name, agg := range esResult.Aggregations {
-		var t map[string]interface{}
-		err := json.Unmarshal(*agg, &t)
-		if err != nil {
-			fmt.Printf("error: %v\n", err)
-		}
-		splittedName := strings.Split(name[1:], ".")
-		realName := splittedName[len(splittedName)-1]
-		aggSect := splittedName[0]
-		sectT := t[aggSect]
-		if name[0] == '&' || name[0] == '*' {
-			recurTab(&sectT)
-			res[realName] = sectT
-		} else {
-			res[name] = t
-		}
+	for name, aggregation := range esResult.Aggregations {
+		prepareRecursiveParsing(res, name, aggregation)
 	}
 	return res
 }

@@ -19,12 +19,12 @@ func main() {
 		fmt.Printf("%v\n", err)
 		return
 	}
-	ress, err := costs.GetElasticSearchParams([]string{"394125495069"}, time.Date(2017, 10, 1, 0, 0, 0, 0, time.Local), time.Date(2017, 11, 1, 0, 0, 0, 0, time.Local), []string{"account", "region", "tag:Environment", "product"}, client, "awsdetailedlineitem").Do(context.Background())
+	ress, err := costs.GetElasticSearchParams([]string{"394125495069"}, time.Date(2017, 10, 1, 0, 0, 0, 0, time.Local), time.Date(2017, 11, 1, 0, 0, 0, 0, time.Local), []string{"tag:Environment", "account", "year", "region", "month", "product", "day"}, client, "awsdetailedlineitem").Do(context.Background())
 	//ress, err := client.Search().Index("awsdetailedlineitem").Size(1).Aggregation("&buckets.accounts", elastic.NewTermsAggregation().Field("linked_account_id").SubAggregation("&buckets.products", elastic.NewTermsAggregation().Field("product_name").Size(2).SubAggregation("&buckets.resources", elastic.NewTermsAggregation().Field("resource_id").Size(3).SubAggregation("*value.cost", elastic.NewSumAggregation().Field("cost")))).Size(5)).Do(context.Background())
 	if err != nil {
 		fmt.Printf("ERROR %v\n", err)
 	} else {
-		pars := parsator.Test(ress)
+		pars := parsator.GetParsedElasticSearchResult(ress)
 		jsonRes, _ := json.MarshalIndent(pars, "", "  ")
 		fmt.Printf("JSONRES\n%v\n", string(jsonRes))
 	}
