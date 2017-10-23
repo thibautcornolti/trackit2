@@ -3,7 +3,6 @@ package main
 import (
 	"./costs"
 	"./es"
-	"./parsator"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -24,7 +23,7 @@ func main() {
 	if err != nil {
 		fmt.Printf("ERROR %v\n", err)
 	} else {
-		pars := parsator.GetParsedElasticSearchResult(ress)
+		pars := costs.GetParsedElasticSearchResult(ress)
 		jsonRes, _ := json.MarshalIndent(pars, "", "  ")
 		fmt.Printf("JSONRES\n%v\n", string(jsonRes))
 	}

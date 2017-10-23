@@ -144,7 +144,6 @@ func nestAggregation(allAggrSlice []paramAggrAndName) elastic.Aggregation {
 	allAggrSlice = reverseAggregationArray(allAggrSlice)
 	aggrToNest := allAggrSlice[0]
 	for _, baseAggr := range allAggrSlice[1:] {
-		fmt.Printf("aggrToNest.paramName = %v; baseAggr.paramName = %v\n", aggrToNest.paramName, baseAggr.paramName)
 		switch assertedBaseAggr := baseAggr.paramAggr.(type) {
 		case *elastic.TermsAggregation:
 			aggrBuff := assertedBaseAggr.SubAggregation(aggrToNest.paramName, aggrToNest.paramAggr)

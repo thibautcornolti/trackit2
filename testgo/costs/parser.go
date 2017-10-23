@@ -1,4 +1,4 @@
-package parsator
+package costs
 
 import (
 	"encoding/json"
@@ -88,11 +88,11 @@ func prepareRecursiveParsing(result map[string]interface{}, aggregationName stri
 	}
 }
 
-// GetParsedElasticSearchResult ...
+// GetParsedElasticSearchResult is used to parse an *elastic.SearchResult
+// to a human readable map[string]interface{} that will be able to be
+// transform to JSON and send to the UI
 func GetParsedElasticSearchResult(esResult *elastic.SearchResult) map[string]interface{} {
 	res := make(map[string]interface{})
-	resJSON, _ := json.MarshalIndent(*esResult, "", "  ")
-	fmt.Printf("%v\n", string(resJSON))
 	for name, aggregation := range esResult.Aggregations {
 		prepareRecursiveParsing(res, name, aggregation)
 	}
